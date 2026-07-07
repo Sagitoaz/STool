@@ -71,16 +71,18 @@
       if (!e.data || e.data.type !== 'STOOL_IMPORT') return;
 
       received = true;
-      const { urls, title, sourceUrl, pageCount } = e.data;
+      const { urls, images, title, sourceUrl, pageCount } = e.data;
+      const pageTotal = images?.length || urls?.length || 0;
 
       setStatus(`✅ Nhận được ${urls.length} trang! Đang tạo PDF...`);
+      if (images && images.length) setStatus(`Da nhan ${images.length}${pageCount ? '/' + pageCount : ''} trang render! Dang tao PDF...`);
       setBar(10);
 
       try {
         const res = await fetch('/api/extract', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls, title, sourceUrl, pageCount })
+          body: JSON.stringify({ urls, images, title, sourceUrl, pageCount })
         });
 
         if (!res.ok) throw new Error('HTTP ' + res.status);

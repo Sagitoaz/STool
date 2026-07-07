@@ -6,6 +6,8 @@ const fse = require('fs-extra');
 const axios = require('axios');
 const { PDFDocument } = require('pdf-lib');
 
+axios.defaults.proxy = false;
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -30,13 +32,15 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '200mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 
 const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
+const LOGS_DIR = path.join(__dirname, 'logs');
 const PROFILE_DIR   = path.join(__dirname, 'browser-profile'); // persists CF cookies
 fse.ensureDirSync(DOWNLOADS_DIR);
+fse.ensureDirSync(LOGS_DIR);
 fse.ensureDirSync(PROFILE_DIR);
 
 const sseClients = {};
@@ -93,7 +97,17 @@ app.get('/api/file/:filename', (req, res) => {
 // The user's browser already has CF clearance cookies, so the bookmarklet can see
 // the actual document page images. We just need to download them from the CDN.
 app.post('/api/extract', async (req, res) => {
-  const { urls, title, sourceUrl, pageCount } = req.body;
+  const { urls, images, title, sourceUrl, pageCount } = req.body;
+  if (images && Array.isArray(images) && images.length > 0) {
+    const cleanImages = images.filter(v => typeof v === 'string' && /^data:image\/(png|jpeg|jpg);base64,/i.test(v));
+    if (cleanImages.length === 0)
+      return res.status(400).json({ success: false, error: 'No rendered page images provided' });
+    const jobId = uuidv4();
+    res.json({ success: true, jobId });
+    processRenderedImages(jobId, cleanImages, title || 'studocu_document', sourceUrl || '');
+    return;
+  }
+
   if (!urls || !Array.isArray(urls) || urls.length === 0)
     return res.status(400).json({ success: false, error: 'No image URLs provided' });
   const expectedPages = normalizePageCount(pageCount);
@@ -105,11 +119,21 @@ app.post('/api/extract', async (req, res) => {
   processExtractedUrls(jobId, cleanUrls, title || 'studocu_document', sourceUrl || '', expectedPages);
 });
 
+async function processRenderedImages(jobId, imageData, title, sourceUrl) {
+  try {
+    sendProgress(jobId, { status: 'generating', message: `Dang tao PDF tu ${imageData.length} trang da render...`, percent: 70 });
+    await finalizePDF(jobId, imageData, sourceUrl, title);
+  } catch (err) {
+    console.error(`[Rendered ${jobId}] Error:`, err.message);
+    sendProgress(jobId, { status: 'error', message: err.message, percent: 0 });
+  }
+}
+
 async function processExtractedUrls(jobId, imageUrls, title, sourceUrl, expectedPages) {
   try {
     const pageText = expectedPages ? `${imageUrls.length}/${expectedPages}` : imageUrls.length;
     sendProgress(jobId, { status: 'downloading', message: `Dang tai ${pageText} trang tai lieu...`, percent: 10 });
-    const imageData = await downloadCDNImages(imageUrls, jobId);
+    const imageData = await downloadCDNImages(imageUrls, jobId, sourceUrl);
     if (imageData.length === 0) throw new Error('Không thể tải được ảnh nào từ tài liệu.');
     await finalizePDF(jobId, imageData, sourceUrl, title);
   } catch (err) {
@@ -186,6 +210,7 @@ async function fetchPage(url) {
     const { data, status } = await axios.get(url, {
       timeout: 30000,
       decompress: true,
+      proxy: false,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -377,10 +402,13 @@ function parseAlternatePatterns(html) {
   return clean.length > 0 ? clean : null;
 }
 
-async function downloadCDNImages(imageUrls, jobId) {
+async function downloadCDNImages(imageUrls, jobId, referer = 'https://www.studocu.com/') {
   const results = [];
   imageUrls = sanitizeImageUrls(imageUrls);
   const total = imageUrls.length;
+  const stats = { failed: 0, nonImage: 0, tiny: 0, unsupported: 0 };
+  const debugLines = [`job=${jobId} total=${total} referer=${referer}`];
+  if (imageUrls[0]) debugLines.push(`firstUrl=${imageUrls[0]}`);
   sendProgress(jobId, { status: 'downloading', message: `Đang tải ${total} trang từ CDN...`, percent: 30 });
 
   for (let i = 0; i < total; i++) {
@@ -390,32 +418,116 @@ async function downloadCDNImages(imageUrls, jobId) {
       percent: 30 + Math.floor((i / total) * 45)
     });
     try {
-      const { data, headers } = await axios.get(imageUrls[i], {
-        responseType: 'arraybuffer',
-        timeout: 20000,
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.studocu.com/' },
-      });
-      const mime = headers['content-type'] || 'image/jpeg';
-      if (!mime.startsWith('image/')) {
-        console.warn(`[CDN] Skip non-image ${i+1}: ${mime}`);
+      const { data, headers, finalUrl } = await fetchFirstUsableImageUrl(imageUrls[i], referer);
+      const bytes = Buffer.from(data);
+      const mime = detectImageMime(bytes, headers['content-type']);
+      if (i < 3) {
+        debugLines.push(`sample${i+1}: url=${finalUrl} ct=${headers['content-type'] || ''} bytes=${bytes.length} mime=${mime || ''} sig=${bytes.subarray(0, 16).toString('hex')}`);
+      }
+      if (!mime) {
+        stats.nonImage++;
+        console.warn(`[CDN] Skip non-image ${i+1}: ${headers['content-type'] || 'unknown'}`);
         continue;
       }
-      if (Buffer.byteLength(data) < 8000) {
+      if (bytes.length < 8000) {
+        stats.tiny++;
         console.warn(`[CDN] Skip tiny image ${i+1}`);
         continue;
       }
-      const b64 = Buffer.from(data).toString('base64');
+      if (!['image/jpeg', 'image/png'].includes(mime)) {
+        stats.unsupported++;
+        console.warn(`[CDN] Skip unsupported image ${i+1}: ${mime}`);
+        continue;
+      }
+      const b64 = bytes.toString('base64');
       results.push(`data:${mime};base64,${b64}`);
     } catch (e) {
+      stats.failed++;
       console.warn(`[CDN] Skip image ${i+1}:`, e.message);
     }
   }
+  if (results.length === 0) {
+    console.warn(`[CDN] No usable images. total=${total}`, stats);
+  }
+  debugLines.push(`result=${results.length} stats=${JSON.stringify(stats)}`);
+  await fse.appendFile(path.join(LOGS_DIR, 'cdn-debug.log'), `${new Date().toISOString()}\n${debugLines.join('\n')}\n\n`).catch(() => {});
   return results;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STRATEGY B – Playwright with Persistent Context (saves CF cookies to disk)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+async function fetchFirstUsableImageUrl(rawUrl, referer) {
+  let lastError;
+  for (const url of buildImageDownloadCandidates(rawUrl)) {
+    try {
+      const res = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 20000,
+        proxy: false,
+        maxRedirects: 5,
+        validateStatus: status => status >= 200 && status < 400,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': referer || 'https://www.studocu.com/',
+        },
+      });
+      return { data: res.data, headers: res.headers, finalUrl: url };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('No image URL candidates');
+}
+
+function buildImageDownloadCandidates(rawUrl) {
+  const candidates = [];
+  const add = url => {
+    if (url && !candidates.includes(url)) candidates.push(url);
+  };
+  add(rawUrl);
+
+  try {
+    const parsed = new URL(rawUrl);
+    for (const key of ['format', 'output-format', 'fm']) {
+      if (/webp/i.test(parsed.searchParams.get(key) || '')) {
+        const jpg = new URL(parsed.href);
+        jpg.searchParams.set(key, 'jpg');
+        add(jpg.href);
+        const png = new URL(parsed.href);
+        png.searchParams.set(key, 'png');
+        add(png.href);
+      }
+    }
+
+    if (/\.webp$/i.test(parsed.pathname)) {
+      for (const ext of ['.jpg', '.jpeg', '.png']) {
+        const alt = new URL(parsed.href);
+        alt.pathname = alt.pathname.replace(/\.webp$/i, ext);
+        add(alt.href);
+      }
+    }
+  } catch {}
+
+  return candidates;
+}
+
+function detectImageMime(bytes, contentType = '') {
+  const ct = String(contentType).split(';')[0].trim().toLowerCase();
+  if (ct === 'image/jpeg' || ct === 'image/jpg') return 'image/jpeg';
+  if (ct === 'image/png') return 'image/png';
+  if (ct === 'image/webp') return 'image/webp';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'image/png';
+  if (bytes.length >= 12 &&
+      bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
 
 async function tryPlaywright(jobId, url) {
   // Lazy-load playwright so startup is fast

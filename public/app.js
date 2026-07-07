@@ -48,7 +48,67 @@ const send=()=>{if(iw&&!iw.closed)iw.postMessage(msg,S);};
 send();setTimeout(send,1000);setTimeout(send,2500);setTimeout(send,5000);
 })();`;
 
-const BOOKMARKLET_CODE = BOOKMARKLET_CODE_OLD;
+const BOOKMARKLET_CODE = String.raw`(async function(){try{
+const S='http://localhost:3000';
+const iw=window.open(S+'/import.html','stool_import');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const t=document.createElement('div');
+t.id='stool-toast';
+t.style='position:fixed;top:16px;right:16px;background:linear-gradient(135deg,#6366f1,#06b6d4);color:white;padding:12px 18px;border-radius:12px;z-index:2147483647;font:500 14px system-ui;box-shadow:0 8px 32px rgba(0,0,0,.4);line-height:1.5;max-width:360px';
+t.innerHTML='<b>STool v2</b><br>Dang tai bo chup trang...';
+document.body.appendChild(t);
+if(!window.html2canvas){
+ const s=document.createElement('script');
+ s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+ document.documentElement.appendChild(s);
+ await new Promise((ok,fail)=>{s.onload=ok;s.onerror=()=>fail(new Error('Khong tai duoc html2canvas'));});
+}
+let pageCount=0;
+const text=document.body.innerText||'';
+const m=text.match(/(\d{1,4})\s*(?:pages?|trang)/i);
+if(m){const n=Number(m[1]);if(n>0&&n<=1000)pageCount=n;}
+document.querySelectorAll('[role="dialog"],[aria-modal="true"]').forEach(e=>e.style.display='none');
+Array.from(document.body.querySelectorAll('*')).forEach(e=>{
+ const cs=getComputedStyle(e);
+ const z=parseInt(cs.zIndex||'0',10);
+ const tx=(e.innerText||'').slice(0,120);
+ if((cs.position==='fixed'||cs.position==='sticky')&&(z>10||/This is a preview|unlock all|Premium|Free Trial/i.test(tx)))e.style.visibility='hidden';
+});
+const h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+for(let y=0;y<h;y+=900){window.scrollTo(0,y);await wait(140);}
+window.scrollTo(0,0);await wait(500);
+const raw=Array.from(document.querySelectorAll('[data-page-number],[data-page],[class*="page"],[class*="Page"],[class*="document"],[class*="Document"],article section,main section'));
+let pages=raw.filter(e=>{
+ if(e===document.body||e===document.documentElement)return false;
+ const r=e.getBoundingClientRect();
+ if(r.width<450||r.height<550)return false;
+ const cs=getComputedStyle(e);
+ if(cs.display==='none'||cs.visibility==='hidden'||cs.opacity==='0')return false;
+ return true;
+}).sort((a,b)=>(a.getBoundingClientRect().top+scrollY)-(b.getBoundingClientRect().top+scrollY));
+const picked=[];
+for(const e of pages){
+ if(picked.some(p=>p.contains(e)||e.contains(p)))continue;
+ picked.push(e);
+}
+pages=picked;
+if(pageCount&&pages.length>pageCount)pages=pages.slice(0,pageCount);
+if(!pages.length)throw new Error('Khong tim thay container trang de chup');
+const images=[];
+for(let i=0;i<pages.length;i++){
+ t.innerHTML='<b>STool v2</b><br>Dang chup trang '+(i+1)+'/'+pages.length+'...';
+ pages[i].scrollIntoView({block:'center'});
+ await wait(220);
+ const canvas=await html2canvas(pages[i],{backgroundColor:'#ffffff',scale:1.35,useCORS:true,allowTaint:false,logging:false,removeContainer:true});
+ images.push(canvas.toDataURL('image/jpeg',0.9));
+}
+const title=document.querySelector('h1')?.textContent?.trim()||document.title||'studocu_document';
+t.innerHTML='<b>STool v2</b><br>Da chup '+images.length+(pageCount?'/'+pageCount:'')+' trang, dang gui...';
+const msg={type:'STOOL_IMPORT',urls:[],images,title,sourceUrl:location.href,pageCount:pageCount||images.length};
+const send=()=>{if(iw&&!iw.closed)iw.postMessage(msg,S);};
+send();setTimeout(send,800);setTimeout(send,2000);setTimeout(send,4000);
+setTimeout(()=>t.remove(),3500);
+}catch(e){alert('STool v2 loi: '+(e&&e.message?e.message:e));}})();`;
 
 
 /* ─── DOM Elements ──────────────────────────────────────────────────────────── */
