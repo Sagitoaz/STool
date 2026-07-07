@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STool – Studocu Downloader Miễn Phí</title>
+  <meta name="description"
+    content="Tải tài liệu Studocu miễn phí dưới dạng PDF. Chỉ cần dán link, nhấn tải về – nhanh chóng, không cần đăng ký." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- Animated background blobs -->
+  <div class="bg-blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="url(#logoGrad)" />
+          <path d="M9 8h9l5 5v11H9V8z" fill="white" fill-opacity="0.2" />
+          <path d="M18 8l5 5h-5V8z" fill="white" fill-opacity="0.5" />
+          <path d="M12 16h8M12 19h6M12 13h5" stroke="white" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M20 22l2.5 2.5M20 22a3 3 0 100-6 3 3 0 000 6z" stroke="#60efff" stroke-width="1.5"
+            stroke-linecap="round" />
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6366f1" />
+              <stop offset="1" stop-color="#06b6d4" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <span class="logo-text">STool</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#how-it-works">Cách dùng</a>
+        <a href="#features">Tính năng</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        Miễn phí · Không đăng ký · Không giới hạn
+      </div>
+      <h1 class="hero-title">
+        Tải tài liệu <span class="gradient-text">Studocu</span><br />về ngay lập tức
+      </h1>
+      <p class="hero-subtitle">
+        Dán link Studocu vào bên dưới — chúng tôi sẽ tự động tải và chuyển đổi
+        tài liệu sang PDF cho bạn. Nhanh chóng, dễ dàng, hoàn toàn miễn phí.
+      </p>
+
+      <!-- Download Card -->
+      <div class="download-card" id="download-card">
+        <div class="input-group" id="input-group">
+          <div class="url-input-wrapper">
+            <svg class="input-icon" viewBox="0 0 20 20" fill="none">
+              <path
+                d="M12.9 2.5A5.5 5.5 0 0117.5 8a5.5 5.5 0 01-5.5 5.5M7.1 17.5A5.5 5.5 0 012.5 12a5.5 5.5 0 015.5-5.5"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M10 7v6M7 10h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            <input type="url" id="studocu-url" class="url-input" placeholder="https://www.studocu.com/..."
+              autocomplete="off" spellcheck="false" />
+            <button class="paste-btn" id="paste-btn" title="Dán từ clipboard">
+              <svg viewBox="0 0 20 20" fill="none">
+                <path d="M8 3H5a1 1 0 00-1 1v12a1 1 0 001 1h10a1 1 0 001-1V4a1 1 0 00-1-1h-3" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" />
+                <rect x="7" y="1.5" width="6" height="3" rx="1" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </button>
+          </div>
+          <button class="download-btn" id="download-btn">
+            <svg class="btn-icon" viewBox="0 0 20 20" fill="none">
+              <path d="M10 3v10M6 9l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+              <path d="M3 16h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            Tải xuống PDF
+          </button>
+        </div>
+
+        <!-- Progress Section (hidden by default) -->
+        <div class="progress-section" id="progress-section" style="display:none">
+          <div class="progress-header">
+            <div class="progress-spinner" id="progress-spinner">
+              <svg viewBox="0 0 40 40">
+                <circle cx="20" cy="20" r="16" stroke="rgba(99,102,241,0.2)" stroke-width="3" fill="none" />
+                <circle cx="20" cy="20" r="16" stroke="url(#spinGrad)" stroke-width="3" fill="none"
+                  stroke-dasharray="60 40" stroke-linecap="round">
+                  <animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s"
+                    repeatCount="indefinite" />
+                </circle>
+                <defs>
+                  <linearGradient id="spinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#6366f1" />
+                    <stop offset="100%" stop-color="#06b6d4" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div class="progress-icon-done" id="progress-icon-done" style="display:none">✅</div>
+            <div class="progress-icon-error" id="progress-icon-error" style="display:none">❌</div>
+            <div class="progress-texts">
+              <div class="progress-message" id="progress-message">Đang xử lý...</div>
+              <div class="progress-percent" id="progress-percent">0%</div>
+            </div>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progress-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Success Result -->
+        <div class="result-section" id="result-section" style="display:none">
+          <div class="result-card">
+            <div class="result-file-icon">
+              <svg viewBox="0 0 48 48" fill="none">
+                <rect width="48" height="48" rx="12" fill="url(#fileGrad)" />
+                <path d="M14 12h13l7 7v17H14V12z" fill="white" fill-opacity="0.2" />
+                <path d="M27 12l7 7h-7v-7z" fill="white" fill-opacity="0.4" />
+                <path d="M19 24h10M19 28h7M19 20h6" stroke="white" stroke-width="1.5" stroke-linecap="round" />
+                <defs>
+                  <linearGradient id="fileGrad" x1="0" y1="0" x2="48" y2="48">
+                    <stop stop-color="#6366f1" />
+                    <stop offset="1" stop-color="#06b6d4" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div class="result-info">
+              <div class="result-title" id="result-title">Tài liệu</div>
+              <div class="result-meta" id="result-meta">PDF · Sẵn sàng tải</div>
+            </div>
+            <a class="download-file-btn" id="download-file-btn" href="#" download>
+              <svg viewBox="0 0 20 20" fill="none">
+                <path d="M10 3v10M6 9l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+                <path d="M3 16h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+              Tải PDF
+            </a>
+          </div>
+          <button class="reset-btn" id="reset-btn">Tải tài liệu khác →</button>
+        </div>
+
+        <!-- Error Section -->
+        <div class="error-section" id="error-section" style="display:none">
+          <div class="error-icon">⚠️</div>
+          <div class="error-message" id="error-message">Đã xảy ra lỗi</div>
+          <button class="reset-btn" id="reset-btn-err">Thử lại</button>
+
+          <!-- Bookmarklet Fallback -->
+          <div class="bookmarklet-fallback" id="bookmarklet-fallback" style="display:none">
+            <div class="bm-divider"><span>hoặc dùng phương pháp trình duyệt</span></div>
+            <div class="bm-card">
+              <div class="bm-header">
+                <span class="bm-badge">🔖 Bookmarklet</span>
+                <span class="bm-desc">Hoạt động 100% — Không cần vượt Cloudflare</span>
+              </div>
+              <div class="bm-steps">
+                <div class="bm-step">
+                  <span class="bm-step-num">1</span>
+                  <div>
+                    <strong>Kéo nút này lên thanh bookmark</strong>
+                    <div style="margin-top:8px">
+                      <a id="bookmarklet-link" href="#" class="bm-drag-btn" title="Kéo vào bookmark bar">
+                        📥 STool Extractor v2
+                      </a>
+                      <span class="bm-hint">← Kéo vào bookmark bar hoặc click chuột phải → Thêm vào bookmarks</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="bm-step">
+                  <span class="bm-step-num">2</span>
+                  <div>
+                    <strong>Mở tài liệu Studocu trong trình duyệt</strong>
+                    <div><a id="open-studocu-link" href="#" target="_blank" class="bm-open-link">Mở trang Studocu →</a></div>
+                  </div>
+                </div>
+                <div class="bm-step">
+                  <span class="bm-step-num">3</span>
+                  <div>
+                    <strong>Click bookmark "STool Extractor v2" trên trang đó</strong>
+                    <p style="margin:4px 0 0;color:var(--text-muted);font-size:0.85rem">PDF sẽ tự động tạo và hiện ở đây</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-num">100%</span>
+          <span class="stat-label">Miễn phí</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">PDF</span>
+          <span class="stat-label">Chất lượng cao</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">0</span>
+          <span class="stat-label">Cần đăng ký</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">∞</span>
+          <span class="stat-label">Lượt tải</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="section" id="how-it-works">
+    <div class="container">
+      <div class="section-label">Đơn giản như 1-2-3</div>
+      <h2 class="section-title">Cách sử dụng STool</h2>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">01</div>
+          <div class="step-icon">🔗</div>
+          <h3>Sao chép link</h3>
+          <p>Mở tài liệu Studocu bạn muốn tải, sao chép địa chỉ URL từ thanh địa chỉ trình duyệt.</p>
+        </div>
+        <div class="step-connector" aria-hidden="true">→</div>
+        <div class="step-card">
+          <div class="step-number">02</div>
+          <div class="step-icon">📋</div>
+          <h3>Dán vào STool</h3>
+          <p>Dán URL vào ô nhập liệu trên STool, sau đó nhấn nút <strong>"Tải xuống PDF"</strong>.</p>
+        </div>
+        <div class="step-connector" aria-hidden="true">→</div>
+        <div class="step-card">
+          <div class="step-number">03</div>
+          <div class="step-icon">📄</div>
+          <h3>Tải về máy</h3>
+          <p>Đợi vài giây để chúng tôi xử lý, sau đó tải file PDF về máy tính của bạn.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section section-alt" id="features">
+    <div class="container">
+      <div class="section-label">Vì sao chọn STool?</div>
+      <h2 class="section-title">Tính năng nổi bật</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--purple">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z" stroke="currentColor"
+                stroke-width="1.5" />
+              <path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </div>
+          <h3>Hoàn toàn miễn phí</h3>
+          <p>Không cần trả phí, không cần tài khoản premium. Mọi tính năng đều miễn phí 100%.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--cyan">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M13 2L4.09 12.26a1 1 0 00.79 1.74H12l-1 8 8.91-10.26a1 1 0 00-.79-1.74H13l1-8z"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <h3>Xử lý nhanh chóng</h3>
+          <p>Công nghệ headless browser tốc độ cao, tải và chuyển đổi tài liệu chỉ trong vài giây.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--green">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.5" />
+              <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3>Chất lượng cao</h3>
+          <p>File PDF đầu ra sắc nét, đầy đủ nội dung, bảo toàn định dạng gốc của tài liệu.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--orange">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <h3>Bảo mật & Riêng tư</h3>
+          <p>Chúng tôi không lưu trữ tài liệu của bạn. File tự động xóa sau 10 phút kể từ khi tạo.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--pink">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="1.5" />
+              <path d="M9 7h6M9 11h6M9 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3>Mọi tài liệu</h3>
+          <p>Hỗ trợ tất cả các loại tài liệu trên Studocu: ghi chú, đề thi, tóm tắt, bài tập...</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon feature-icon--blue">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z" stroke="currentColor" stroke-width="1.5" />
+              <path d="M12 2v2M12 20v2M2 12h2M20 12h2" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3>Mọi thiết bị</h3>
+          <p>Responsive hoàn toàn. Hoạt động tốt trên máy tính, tablet và điện thoại di động.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="container">
+      <div class="section-label">Câu hỏi thường gặp</div>
+      <h2 class="section-title">FAQ</h2>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary class="faq-question">
+            STool có thực sự miễn phí không?
+            <span class="faq-arrow">›</span>
+          </summary>
+          <div class="faq-answer">
+            Có, STool hoàn toàn miễn phí. Không có phí ẩn, không cần đăng ký tài khoản. Bạn chỉ cần dán link và tải
+            xuống.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">
+            Mất bao lâu để tải một tài liệu?
+            <span class="faq-arrow">›</span>
+          </summary>
+          <div class="faq-answer">
+            Thông thường từ 15–60 giây tùy thuộc vào độ dài của tài liệu và tốc độ kết nối. Tài liệu nhiều trang có thể
+            mất lâu hơn.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">
+            Tại sao tôi nhận được thông báo lỗi?
+            <span class="faq-arrow">›</span>
+          </summary>
+          <div class="faq-answer">
+            Có thể xảy ra khi: (1) URL không đúng định dạng Studocu, (2) Tài liệu yêu cầu đăng nhập đặc biệt, (3)
+            Studocu đang cập nhật hệ thống. Hãy thử lại sau vài phút.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">
+            File PDF của tôi được lưu ở đâu?
+            <span class="faq-arrow">›</span>
+          </summary>
+          <div class="faq-answer">
+            File PDF chỉ được tạo tạm thời trên server và sẽ tự động xóa sau 10 phút. Chúng tôi không lưu trữ bất kỳ tài
+            liệu nào của bạn trên máy chủ.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">
+            STool có hoạt động trên điện thoại không?
+            <span class="faq-arrow">›</span>
+          </summary>
+          <div class="faq-answer">
+            Có! Giao diện STool được thiết kế responsive, hoạt động tốt trên tất cả thiết bị bao gồm điện thoại, tablet
+            và máy tính.
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="logo">
+          <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="url(#logoGrad2)" />
+            <path d="M9 8h9l5 5v11H9V8z" fill="white" fill-opacity="0.2" />
+            <path d="M18 8l5 5h-5V8z" fill="white" fill-opacity="0.5" />
+            <path d="M12 16h8M12 19h6M12 13h5" stroke="white" stroke-width="1.5" stroke-linecap="round" />
+            <path d="M20 22l2.5 2.5M20 22a3 3 0 100-6 3 3 0 000 6z" stroke="#60efff" stroke-width="1.5"
+              stroke-linecap="round" />
+            <defs>
+              <linearGradient id="logoGrad2" x1="0" y1="0" x2="32" y2="32">
+                <stop stop-color="#6366f1" />
+                <stop offset="1" stop-color="#06b6d4" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="logo-text">STool</span>
+        </div>
+        <p class="footer-desc">Công cụ tải tài liệu Studocu nhanh chóng, miễn phí và an toàn.</p>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 STool. Được xây dựng cho mục đích học tập.</p>
+        <p class="footer-disclaimer">Lưu ý: Công cụ này không liên kết với Studocu. Vui lòng tôn trọng bản quyền tác
+          giả.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
