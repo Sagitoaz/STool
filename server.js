@@ -32,7 +32,16 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '200mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.too.large' || /request entity too large/i.test(err.message || ''))) {
+    return res.status(413).json({ success: false, error: 'Payload anh qua lon. Hay thu lai, STool se nen anh nho hon.' });
+  }
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({ success: false, error: 'JSON gui len server bi hong hoac qua lon.' });
+  }
+  next(err);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 
@@ -45,6 +54,11 @@ fse.ensureDirSync(PROFILE_DIR);
 
 const sseClients = {};
 const jobStates = {};
+const renderJobs = {};
+
+function appendLog(filename, line) {
+  fse.appendFile(path.join(LOGS_DIR, filename), `[${new Date().toISOString()}] ${line}\n`).catch(() => {});
+}
 
 // ─── SSE ──────────────────────────────────────────────────────────────────────
 app.get('/api/progress/:jobId', (req, res) => {
@@ -128,6 +142,62 @@ async function processRenderedImages(jobId, imageData, title, sourceUrl) {
     sendProgress(jobId, { status: 'error', message: err.message, percent: 0 });
   }
 }
+
+app.post('/api/render/start', (req, res) => {
+  const { title, sourceUrl, pageCount, total } = req.body;
+  const expectedPages = normalizePageCount(pageCount) || normalizePageCount(total);
+  const jobId = uuidv4();
+  renderJobs[jobId] = {
+    title: title || 'studocu_document',
+    sourceUrl: sourceUrl || '',
+    expectedPages,
+    images: [],
+    createdAt: Date.now(),
+  };
+  appendLog('render-debug.log', `${jobId} start expected=${expectedPages || '?'} total=${total || '?'} title="${title || ''}" url="${sourceUrl || ''}"`);
+  res.json({ success: true, jobId });
+  sendProgress(jobId, { status: 'receiving', message: `Dang nhan 0/${expectedPages || '?'} trang render...`, percent: 5 });
+});
+
+app.post('/api/render/page', (req, res) => {
+  const { jobId, index, total, image } = req.body;
+  const job = renderJobs[jobId];
+  if (!job) return res.status(404).json({ success: false, error: 'Render job not found' });
+  if (typeof image !== 'string' || !/^data:image\/(png|jpeg|jpg);base64,/i.test(image)) {
+    appendLog('render-debug.log', `${jobId || 'no-job'} page invalid index=${index} type=${typeof image} prefix="${String(image || '').slice(0, 40)}"`);
+    return res.status(400).json({ success: false, error: 'Invalid rendered page image' });
+  }
+
+  const pageIndex = Number.isInteger(Number(index)) ? Number(index) : job.images.length;
+  const byteSize = Math.floor((image.length - image.indexOf(',') - 1) * 0.75);
+  job.images[pageIndex] = image;
+  const received = job.images.filter(Boolean).length;
+  const expected = normalizePageCount(total) || job.expectedPages || received;
+  appendLog('render-debug.log', `${jobId} page index=${pageIndex} received=${received}/${expected} bytes=${byteSize}`);
+  sendProgress(jobId, {
+    status: 'receiving',
+    message: `Dang nhan ${received}/${expected} trang render...`,
+    percent: Math.min(65, 5 + Math.floor((received / expected) * 60))
+  });
+  res.json({ success: true, received });
+});
+
+app.post('/api/render/finish', (req, res) => {
+  const { jobId } = req.body;
+  const job = renderJobs[jobId];
+  if (!job) return res.status(404).json({ success: false, error: 'Render job not found' });
+  const images = job.images.filter(Boolean);
+  if (images.length === 0) return res.status(400).json({ success: false, error: 'No rendered pages received' });
+  const expected = job.expectedPages || images.length;
+  if (job.expectedPages && images.length < Math.max(1, job.expectedPages - 2)) {
+    appendLog('render-debug.log', `${jobId} finish refused received=${images.length}/${job.expectedPages}`);
+    return res.status(400).json({ success: false, error: `Server chi nhan ${images.length}/${job.expectedPages} trang. Hay bam bookmark lai sau khi trang Studocu load xong.` });
+  }
+  appendLog('render-debug.log', `${jobId} finish received=${images.length}/${expected}`);
+  res.json({ success: true, jobId });
+  delete renderJobs[jobId];
+  processRenderedImages(jobId, images, job.title, job.sourceUrl);
+});
 
 async function processExtractedUrls(jobId, imageUrls, title, sourceUrl, expectedPages) {
   try {

@@ -3,53 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>STool – Nhận dữ liệu từ Studocu</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <title>STool - Import</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;background:#080b14;color:#f1f5f9;
-         display:flex;align-items:center;justify-content:center;min-height:100vh;
-         padding:20px}
-    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
-          border-radius:24px;padding:48px 40px;max-width:480px;width:100%;text-align:center}
+    body{font-family:Inter,system-ui,sans-serif;background:#080b14;color:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:48px 40px;max-width:520px;width:100%;text-align:center}
     .icon{font-size:3rem;margin-bottom:16px}
     h1{font-size:1.4rem;font-weight:700;margin-bottom:8px}
-    p{color:#94a3b8;font-size:0.95rem;line-height:1.6}
-    .spinner{width:48px;height:48px;border:3px solid rgba(99,102,241,0.2);
-             border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;
-             margin:20px auto}
+    p{color:#94a3b8;font-size:.95rem;line-height:1.6}
+    .spinner{width:48px;height:48px;border:3px solid rgba(99,102,241,.2);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:20px auto}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .status{margin-top:20px;padding:14px 20px;border-radius:12px;font-size:0.9rem;
-            font-weight:500;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)}
-    .success{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:#10b981}
-    .error{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.3);color:#f87171}
-    .bar-track{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;
-               margin-top:16px;overflow:hidden}
-    .bar-fill{height:100%;background:linear-gradient(90deg,#6366f1,#06b6d4);
-              border-radius:3px;width:0%;transition:width 0.4s ease}
-    a.home{display:inline-block;margin-top:20px;color:#6366f1;font-size:0.875rem;
-           text-decoration:none}
-    a.home:hover{text-decoration:underline}
+    .status{margin-top:20px;padding:14px 20px;border-radius:12px;font-size:.9rem;font-weight:500;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2)}
+    .success{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:#10b981}
+    .error{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#f87171}
+    .bar-track{height:6px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:16px;overflow:hidden}
+    .bar-fill{height:100%;background:linear-gradient(90deg,#6366f1,#06b6d4);border-radius:3px;width:0%;transition:width .4s ease}
+    a.home{display:inline-block;margin-top:20px;color:#818cf8;font-size:.875rem;text-decoration:none}
   </style>
 </head>
 <body>
   <div class="card">
     <div class="icon">📥</div>
-    <h1>Đang nhận dữ liệu từ Studocu</h1>
-    <p id="desc">Trang này đang chờ bookmarklet gửi URL tài liệu.<br/>
-      Vui lòng quay lại tab Studocu và click bookmark <strong>STool Extractor</strong>.</p>
+    <h1>Dang nhan du lieu tu Studocu</h1>
+    <p>Quay lai tab Studocu va bam bookmark <strong>STool Extractor v2</strong>.</p>
     <div class="spinner" id="spinner"></div>
-    <div class="status" id="status">⏳ Đang chờ dữ liệu...</div>
+    <div class="status" id="status">Dang cho du lieu...</div>
     <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
-    <a href="/" class="home">← Về trang chủ STool</a>
+    <a href="/" class="home">← Ve trang chu STool</a>
   </div>
 
   <script>
     const statusEl = document.getElementById('status');
-    const barEl    = document.getElementById('bar');
-    const spinnerEl= document.getElementById('spinner');
-    let received   = false;
+    const barEl = document.getElementById('bar');
+    const spinnerEl = document.getElementById('spinner');
+    let received = false;
+    let renderJobId = null;
 
     function setStatus(msg, type) {
       statusEl.textContent = msg;
@@ -60,46 +48,108 @@
       barEl.style.width = pct + '%';
     }
 
-    // ── Listen for postMessage from Studocu page ──────────────────────────────
+    async function readJsonResponse(res) {
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok || data.success === false) throw new Error(data.error || 'HTTP ' + res.status);
+      return data;
+    }
+
     window.addEventListener('message', async (e) => {
-      // Accept from any studocu domain
-      if (received) return;
-      if (!e.origin.includes('studocu')) {
-        console.log('[STool Import] Ignored message from:', e.origin);
-        return;
-      }
-      if (!e.data || e.data.type !== 'STOOL_IMPORT') return;
-
-      received = true;
-      const { urls, images, title, sourceUrl, pageCount } = e.data;
-      const pageTotal = images?.length || urls?.length || 0;
-
-      setStatus(`✅ Nhận được ${urls.length} trang! Đang tạo PDF...`);
-      if (images && images.length) setStatus(`Da nhan ${images.length}${pageCount ? '/' + pageCount : ''} trang render! Dang tao PDF...`);
-      setBar(10);
+      if (!e.origin.includes('studocu')) return;
+      if (!e.data || !e.data.type) return;
 
       try {
-        const res = await fetch('/api/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls, images, title, sourceUrl, pageCount })
-        });
+        if (e.data.type === 'STOOL_RENDER_START') {
+          received = true;
+          setStatus(`Dang tao job render ${e.data.total || '?'} trang...`);
+          setBar(5);
 
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+          const data = await readJsonResponse(await fetch('/api/render/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: e.data.title,
+              sourceUrl: e.data.sourceUrl,
+              pageCount: e.data.pageCount,
+              total: e.data.total
+            })
+          }));
 
-        if (data.success) {
-          setStatus('🎉 Đã gửi! Đang tạo PDF...', 'success');
-          setBar(30);
-          spinnerEl.style.display = 'block';
+          renderJobId = data.jobId;
+          connectSSE(renderJobId);
+          e.source && e.source.postMessage({ type: 'STOOL_RENDER_READY', jobId: renderJobId }, e.origin);
+          return;
+        }
 
-          // Connect to SSE to track progress
+        if (e.data.type === 'STOOL_RENDER_PAGE') {
+          received = true;
+          if (!renderJobId) throw new Error('Render job chua san sang');
+
+          try {
+            const data = await readJsonResponse(await fetch('/api/render/page', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jobId: renderJobId,
+                index: e.data.index,
+                total: e.data.total,
+                image: e.data.image
+              })
+            }));
+
+            setStatus(`Da nhan ${data.received}/${e.data.total} trang render...`);
+            setBar(Math.min(70, 10 + Math.floor((data.received / e.data.total) * 60)));
+            e.source && e.source.postMessage({
+              type: 'STOOL_RENDER_PAGE_OK',
+              index: e.data.index,
+              received: data.received
+            }, e.origin);
+          } catch (err) {
+            e.source && e.source.postMessage({
+              type: 'STOOL_RENDER_PAGE_ERROR',
+              index: e.data.index,
+              error: err.message
+            }, e.origin);
+            throw err;
+          }
+          return;
+        }
+
+        if (e.data.type === 'STOOL_RENDER_FINISH') {
+          received = true;
+          if (!renderJobId) throw new Error('Render job chua san sang');
+          setStatus('Da nhan xong. Dang tao PDF...');
+          try {
+            await readJsonResponse(await fetch('/api/render/finish', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jobId: renderJobId })
+            }));
+          } catch (err) {
+            e.source && e.source.postMessage({
+              type: 'STOOL_RENDER_FINISH_ERROR',
+              error: err.message
+            }, e.origin);
+            throw err;
+          }
+          return;
+        }
+
+        if (e.data.type === 'STOOL_IMPORT') {
+          received = true;
+          const { urls, images, title, sourceUrl, pageCount } = e.data;
+          setStatus(`Da nhan ${(images?.length || urls?.length || 0)} trang. Dang tao PDF...`);
+          setBar(10);
+          const data = await readJsonResponse(await fetch('/api/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls, images, title, sourceUrl, pageCount })
+          }));
           connectSSE(data.jobId);
-        } else {
-          throw new Error(data.error || 'Server error');
         }
       } catch (err) {
-        setStatus('❌ Lỗi: ' + err.message, 'error');
+        setStatus('Loi: ' + err.message, 'error');
         spinnerEl.style.display = 'none';
       }
     });
@@ -111,30 +161,24 @@
           const d = JSON.parse(e.data);
           setStatus(d.message || '...');
           if (d.percent) setBar(d.percent);
-
           if (d.status === 'done') {
             sse.close();
-            setStatus('✅ ' + d.message, 'success');
+            setStatus(d.message, 'success');
             setBar(100);
             spinnerEl.style.display = 'none';
-            setTimeout(() => {
-              window.location.href = '/?jobId=' + jobId;
-            }, 800);
+            setTimeout(() => { window.location.href = '/?jobId=' + jobId; }, 800);
           } else if (d.status === 'error') {
             sse.close();
-            setStatus('❌ ' + d.message, 'error');
+            setStatus(d.message, 'error');
             spinnerEl.style.display = 'none';
           }
         } catch {}
       };
-      sse.onerror = () => { sse.close(); };
+      sse.onerror = () => sse.close();
     }
 
-    // Auto-timeout after 60s with instructions
     setTimeout(() => {
-      if (!received) {
-        setStatus('⚠️ Chưa nhận được dữ liệu. Hãy click bookmark "STool Extractor" trên trang Studocu.', 'error');
-      }
+      if (!received) setStatus('Chua nhan du lieu. Hay bam bookmark STool Extractor v2 tren tab Studocu.', 'error');
     }, 60000);
   </script>
 </body>
