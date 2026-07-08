@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "setup": "npx playwright install chromium",
-    "render-build": "npm ci && npx playwright install --with-deps chromium",
+    "render-build": "npm ci --omit=dev",
     "check": "node --check server.js && node --check public/app.js"
   },
   "engines": {

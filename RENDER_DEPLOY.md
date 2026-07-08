@@ -1,88 +1,48 @@
-# Deploy STool len Render va test
+# Deploy STool len Render bang Docker
 
-File nay la huong dan duy nhat de dua STool len Render, sau do test backend tren Linux/Render thay vi Windows local.
+File nay la huong dan duy nhat de deploy STool len Render va test lai tren moi truong Linux.
 
-## 1. Dieu kien truoc khi deploy
+## 1. Vi sao build cu bi fail?
 
-Can co:
+Log cu co dong:
 
-- Tai khoan GitHub.
-- Tai khoan Render: https://render.com
-- Project da push len GitHub.
-- Repo co cac file quan trong:
-  - `package.json`
-  - `package-lock.json`
-  - `server.js`
-  - `public/`
-  - `render.yaml`
+```text
+Switching to root user to install dependencies...
+Password: su: Authentication failure
+Failed to install browsers
+```
 
-Render se chay STool nhu mot Node web service. Theo tai lieu Render, Node/Express app can build command va start command rieng; app cua minh dung `npm run render-build` va `npm start`. Render cung ho tro health check HTTP bang mot path nhu `/health`.
+Nguyen nhan la lenh `npx playwright install --with-deps chromium` dang co gang cai system package bang quyen root trong native Node runtime cua Render. Moi truong build do khong cho nhap mat khau `su`, nen build fail.
+
+Cach sua on dinh hon la deploy bang Docker. Render ho tro Dockerfile, va Docker cho phep minh dung san image Playwright da co Chromium va system dependencies can thiet.
 
 Tai lieu tham khao:
 
-- Node/Express on Render: https://render.com/docs/deploy-node-express-app
-- Health checks: https://render.com/docs/health-checks
+- Render Docker: https://render.com/docs/docker
+- Render Blueprint spec: https://render.com/docs/blueprint-spec
 
-## 2. Kiem tra local truoc khi push
+## 2. Cac file deploy da co san
 
-Mo PowerShell tai thu muc project:
+Repo can co cac file nay:
 
-```powershell
-cd E:\WINDOW\Project\STool
-npm install
-npm run check
-git status --short
+```text
+Dockerfile
+.dockerignore
+render.yaml
+package.json
+package-lock.json
+server.js
+public/
 ```
 
-Neu `npm run check` khong bao loi cu phap thi co the push.
-
-## 3. Push code len GitHub
-
-Neu repo chua co remote:
-
-```powershell
-git init
-git add .
-git commit -m "Prepare Render deployment"
-git branch -M main
-git remote add origin https://github.com/<ten-user>/<ten-repo>.git
-git push -u origin main
-```
-
-Neu repo da co remote:
-
-```powershell
-git add .
-git commit -m "Prepare Render deployment"
-git push
-```
-
-Luu y: `.gitignore` da ignore `node_modules/`, `downloads/`, `logs/`, `browser-profile/`, file PDF tam va cache Playwright. Khong push cac thu muc runtime nay.
-
-## 4. Tao Web Service tren Render
-
-Co 2 cach.
-
-### Cach A: Dung Blueprint `render.yaml`
-
-1. Vao Render Dashboard.
-2. Chon `New`.
-3. Chon `Blueprint`.
-4. Connect GitHub repo STool.
-5. Render se doc file `render.yaml`.
-6. Xac nhan service `stool`.
-7. Chon region gan ban nhat neu duoc.
-8. Tao service.
-
-File `render.yaml` hien tai:
+`render.yaml` hien tai dung Docker:
 
 ```yaml
 services:
   - type: web
     name: stool
-    runtime: node
-    buildCommand: npm run render-build
-    startCommand: npm start
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -91,60 +51,144 @@ services:
       - key: PLAYWRIGHT_HEADLESS
         value: "true"
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "0"
+        value: /ms-playwright
 ```
 
-### Cach B: Tao Web Service thu cong
+`Dockerfile` dung image:
+
+```text
+mcr.microsoft.com/playwright:v1.44.1-jammy
+```
+
+Image nay da co Chromium cho Playwright, nen khong can chay `playwright install --with-deps` tren Render nua.
+
+## 3. Kiem tra local truoc khi push
+
+Mo PowerShell tai thu muc project:
+
+```powershell
+cd E:\WINDOW\Project\STool
+npm run check
+git status --short
+```
+
+Neu `npm run check` khong bao loi cu phap thi push len GitHub.
+
+## 4. Push code len GitHub
+
+Neu repo da co remote:
+
+```powershell
+git add .
+git commit -m "Prepare Docker deployment for Render"
+git push
+```
+
+Neu repo chua co remote:
+
+```powershell
+git init
+git add .
+git commit -m "Prepare Docker deployment for Render"
+git branch -M main
+git remote add origin https://github.com/<ten-user>/<ten-repo>.git
+git push -u origin main
+```
+
+Luu y: `.gitignore` va `.dockerignore` da bo qua `node_modules/`, `downloads/`, `logs/`, `browser-profile/`, PDF tam, cache log va cac file local khong nen day len GitHub.
+
+## 5. Neu da tao service Render bi fail truoc do
+
+Neu service cu duoc tao voi Runtime `Node`, nen tao service moi bang Docker cho sach.
+
+Ly do: service cu van co the giu cau hinh native Node va tiep tuc chay build command cu. Tao lai bang Docker se tranh viec Render lap lai loi `su: Authentication failure`.
+
+Cach lam:
+
+1. Vao Render Dashboard.
+2. Mo service STool cu.
+3. Neu no dang la native Node runtime, xoa service do hoac tao service moi.
+4. Deploy lai theo muc 6 hoac muc 7 ben duoi.
+
+## 6. Cach A: Deploy bang Blueprint
+
+1. Vao Render Dashboard.
+2. Chon `New`.
+3. Chon `Blueprint`.
+4. Connect GitHub repo STool.
+5. Render se doc file `render.yaml`.
+6. Xac nhan service `stool`.
+7. Bam tao service.
+
+Voi cach nay, Render se tu nhan:
+
+```text
+runtime: docker
+dockerfilePath: ./Dockerfile
+healthCheckPath: /health
+```
+
+Khong can dien Build Command hay Start Command.
+
+## 7. Cach B: Tao Web Service thu cong
 
 1. Vao Render Dashboard.
 2. Chon `New` -> `Web Service`.
 3. Connect GitHub repo STool.
 4. Chon branch `main`.
-5. Cau hinh:
+5. O phan Runtime/Language, chon `Docker`.
+6. Dockerfile path de mac dinh hoac dien:
 
 ```text
-Runtime: Node
-Build Command: npm run render-build
-Start Command: npm start
-Health Check Path: /health
+./Dockerfile
 ```
 
-6. Them Environment Variables:
+7. Health Check Path:
+
+```text
+/health
+```
+
+8. Them Environment Variables neu Render khong tu lay tu `render.yaml`:
 
 ```text
 NODE_ENV=production
 PLAYWRIGHT_HEADLESS=true
-PLAYWRIGHT_BROWSERS_PATH=0
+PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ```
 
-7. Bam `Create Web Service`.
+9. Bam `Create Web Service`.
 
-## 5. Chon plan nao?
-
-Playwright/Chromium can RAM kha nhieu. Neu plan free build hoac runtime bi crash, chuyen sang plan co RAM cao hon.
-
-Trieu chung thieu RAM:
-
-- Build dung lau roi fail khi `playwright install`.
-- Log co `out of memory`, `killed`, `signal SIGKILL`.
-- Service start duoc nhung khi bam tai thi browser crash.
-
-Neu gap cac loi nay, vao Render service -> `Settings` -> doi instance type cao hon -> deploy lai.
-
-## 6. Theo doi build log
-
-Trong tab `Logs`, build thanh cong can thay cac buoc gan nhu:
+Khong dien:
 
 ```text
-npm ci
-npx playwright install --with-deps chromium
+Build Command
+Start Command
+```
+
+Dockerfile da tu chay `npm ci --omit=dev` va `npm start`.
+
+## 8. Kiem tra build log
+
+Build thanh cong se co cac buoc gan nhu:
+
+```text
+Building Docker image
+npm ci --omit=dev
 npm start
 STool v2 ... http://localhost:<PORT>
 ```
 
-Neu loi o `playwright install --with-deps chromium`, thu redeploy mot lan. Neu van loi, copy doan log loi do de sua tiep.
+Neu van thay dong nay thi ban dang deploy sai runtime:
 
-## 7. Kiem tra service song
+```text
+npx playwright install --with-deps chromium
+su: Authentication failure
+```
+
+Khi do hay xoa service cu va tao lai service Docker.
+
+## 9. Kiem tra service song
 
 Sau khi deploy xong, Render se cap URL dang:
 
@@ -175,96 +219,71 @@ Sau do mo trang chinh:
 https://<ten-service>.onrender.com
 ```
 
-## 8. Test tai Studocu
+## 10. Test tai lieu
 
 1. Mo URL Render cua STool.
 2. Dan link Studocu vao input.
 3. Bam `Tai xuong PDF`.
-4. Cho progress chay.
-5. Neu thanh cong, nut tai file PDF se hien ra.
+4. Theo doi progress va Render Logs.
+5. Neu thanh cong, tai file PDF ve kiem tra so trang va noi dung.
 
 Nen test theo thu tu:
 
-1. Link tai lieu ngan, it trang.
-2. Link tai lieu trung binh.
-3. Link tai lieu dai.
+1. Tai lieu ngan.
+2. Tai lieu trung binh.
+3. Tai lieu 59 trang dang loi.
 
-Dung ngay tai lieu 59 trang luc dau cung duoc, nhung neu fail thi kho tach loi hon.
-
-## 9. Doc log khi test fail
-
-Render Dashboard -> service `stool` -> tab `Logs`.
-
-Can tim cac dong:
-
-```text
-[Job ...] Strategy A
-[Job ...] Strategy B
-browser-debug.log
-fast-debug.log
-cdn-debug.log
-```
-
-Trong repo, STool cung ghi log vao thu muc `logs/`, nhung tren Render filesystem co the la tam thoi. Uu tien xem Logs tren dashboard.
-
-Y nghia loi hay gap:
+## 11. Loi hay gap sau khi deploy
 
 ```text
 spawn EPERM
 ```
 
-Thuong la loi Windows local. Tren Render/Linux loi nay khong nen xay ra. Neu van gap, Chromium dang bi moi truong runtime chan.
+Loi nay thuong chi gap tren Windows local do antivirus/Windows Security chan Chromium. Tren Docker/Linux cua Render khong nen gap.
 
 ```text
-Cloudflare ...
+out of memory
+killed
+signal SIGKILL
 ```
 
-Studocu/Cloudflare chan request tu server. Can test lai, doi region/plan, hoac can thiet ke them flow khac.
+Instance Render thieu RAM. Can doi sang plan co RAM cao hon.
 
 ```text
-Fast mode chua tim du anh trang goc
+Cloudflare
+HTTP 403
+HTTP 429
 ```
 
-Trang khong expose du anh/PDF source de ghep PDF dung. STool se dung de tranh tao PDF sai.
+Studocu/Cloudflare dang chan request tu server. Thu redeploy, doi region/plan, hoac test lai sau.
 
 ```text
 Khong the lay noi dung tai lieu
 ```
 
-Backend vao duoc trang nhung khong tim thay source/anh/page container hop le.
+Backend vao duoc trang nhung khong tim thay noi dung hop le de tao PDF.
 
-## 10. Luu y quan trong
+## 12. Checklist nhanh
 
-- Bookmarklet da bi vo hieu hoa, nen flow test chi con: dan link -> bam tai -> thanh cong hoac fail ro rang.
-- STool khong trien khai bypass premium/blur/paywall.
-- Render co filesystem tam thoi, file PDF tao ra se bi xoa sau mot thoi gian ngan theo logic server.
-- Neu muon luu cookie/browser profile lau dai, can cau hinh persistent disk tren Render. Ban co the test truoc khong can disk.
-
-## 11. Checklist nhanh
-
-Truoc khi deploy:
+Local:
 
 ```powershell
 npm run check
 git status --short
 git add .
-git commit -m "Prepare Render deployment"
+git commit -m "Prepare Docker deployment for Render"
 git push
 ```
 
-Tren Render:
+Render:
 
 ```text
-Build Command: npm run render-build
-Start Command: npm start
+Runtime: Docker
+Dockerfile path: ./Dockerfile
 Health Check Path: /health
-Env:
-NODE_ENV=production
-PLAYWRIGHT_HEADLESS=true
-PLAYWRIGHT_BROWSERS_PATH=0
 ```
 
-Sau deploy:
+Test:
 
 ```text
 GET /health -> ok true
