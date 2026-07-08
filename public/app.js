@@ -55,9 +55,13 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 let renderReady=false;
 let renderJobId=null;
 let finishError=null;
+let fastAccepted=false;
+let fastRejected=null;
 const pendingPages=new Map();
 window.addEventListener('message',e=>{
  if(e.origin!==S||!e.data)return;
+ if(e.data.type==='STOOL_FAST_ACCEPTED'){fastAccepted=true;renderJobId=e.data.jobId;}
+ if(e.data.type==='STOOL_FAST_REJECTED'){fastRejected=e.data.error||'Fast mode failed';}
  if(e.data.type==='STOOL_RENDER_READY'){renderReady=true;renderJobId=e.data.jobId;}
  if(e.data.type==='STOOL_RENDER_PAGE_OK'&&pendingPages.has(e.data.index)){pendingPages.get(e.data.index).resolve(e.data);pendingPages.delete(e.data.index);}
  if(e.data.type==='STOOL_RENDER_PAGE_ERROR'&&pendingPages.has(e.data.index)){pendingPages.get(e.data.index).reject(new Error(e.data.error||'Upload page failed'));pendingPages.delete(e.data.index);}
@@ -68,6 +72,125 @@ t.id='stool-toast';
 t.style='position:fixed;top:16px;right:16px;background:linear-gradient(135deg,#6366f1,#06b6d4);color:white;padding:12px 18px;border-radius:12px;z-index:2147483647;font:500 14px system-ui;box-shadow:0 8px 32px rgba(0,0,0,.4);line-height:1.5;max-width:360px';
 t.innerHTML='<b>STool v2</b><br>Dang tai bo chup trang...';
 document.body.appendChild(t);
+let pageCount=0;
+const text=document.body.innerText||'';
+const nums=[...text.matchAll(/(\d{1,4})\s*(?:pages?|trang)/gi)].map(m=>Number(m[1])).filter(n=>n>0&&n<=1000);
+if(nums.length)pageCount=Math.max(...nums);
+const title=document.querySelector('h1')?.textContent?.trim()||document.title||'studocu_document';
+function compactScripts(){
+ const out=[];
+ let total=0;
+ for(const s of Array.from(document.scripts)){
+  const txt=s.textContent||'';
+  if(txt.length<20)continue;
+  if(!/studocu|cloudfront|doc-assets|document|page|preview|image|__NEXT_DATA__/i.test(txt))continue;
+  const part=txt.slice(0,450000);
+  out.push(part);
+  total+=part.length;
+  if(total>1600000)break;
+ }
+ return out;
+}
+function collectFastPayload(){
+ const imgs=Array.from(document.images).map(img=>({src:img.currentSrc||img.src||'',srcset:img.srcset||'',width:img.naturalWidth||img.width||0,height:img.naturalHeight||img.height||0})).filter(x=>x.src||x.srcset).slice(0,1200);
+ const resources=(performance.getEntriesByType?performance.getEntriesByType('resource'):[]).map(r=>({name:r.name,initiatorType:r.initiatorType||''})).filter(r=>/studocu|cloudfront|doc-assets|image|page|preview/i.test(r.name)).slice(0,1600);
+ const links=Array.from(document.querySelectorAll('a[href],link[href]')).map(a=>a.href).filter(Boolean).filter(h=>/studocu|cloudfront|doc-assets|pdf|download|document/i.test(h)).slice(0,1200);
+ const stylesheets=Array.from(document.querySelectorAll('link[rel~="stylesheet"][href]')).map(a=>a.href).filter(Boolean).slice(0,300);
+ const inlineStyles=Array.from(document.querySelectorAll('style')).map(s=>(s.textContent||'').slice(0,120000)).filter(t=>/studocu|doc-assets|url\(/i.test(t)).slice(0,80);
+ const backgrounds=[];
+ Array.from(document.querySelectorAll('main *,article *,section *,div')).slice(0,2500).forEach(e=>{
+  const bg=getComputedStyle(e).backgroundImage;
+  if(bg&&bg!=='none'&&/url\(/i.test(bg))backgrounds.push(bg);
+ });
+ return {
+  type:'STOOL_FAST_IMPORT',
+  title,
+  sourceUrl:location.href,
+  pageCount:pageCount||null,
+  nextData:document.getElementById('__NEXT_DATA__')?.textContent||'',
+  scripts:compactScripts(),
+  images:imgs,
+  resources,
+  links,
+  stylesheets,
+  inlineStyles,
+  backgrounds:backgrounds.slice(0,500)
+ };
+}
+async function tryHtmlPrintMode(reason){
+ const sourceRoot=document.querySelector('.p2hv')||document.querySelector('#page-container')||document.querySelector('[class*="page-container"]');
+ if(!sourceRoot)return false;
+ const oldY=scrollY;
+ const totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+ t.innerHTML='<b>STool v2</b><br>Dang nap cac trang HTML...';
+ for(let y=0;y<totalH;y+=1400){window.scrollTo(0,y);await wait(70);}
+ window.scrollTo(0,oldY);await wait(250);
+ const pageNodes=Array.from(document.querySelectorAll('.pf')).filter(p=>{
+  const r=p.getBoundingClientRect();
+  const cs=getComputedStyle(p);
+  return r.width>250&&r.height>250&&cs.display!=='none'&&cs.visibility!=='hidden';
+ });
+ if(!pageNodes.length)return false;
+ if(pageCount&&pageNodes.length<Math.max(1,Math.ceil(pageCount*.65))){
+  t.innerHTML='<b>STool v2</b><br>HTML print chi thay '+pageNodes.length+'/'+pageCount+' trang dang truy cap duoc.';
+  return false;
+ }
+ const old=document.getElementById('stool-html-print');
+ if(old)old.remove();
+ const overlay=document.createElement('div');
+ overlay.id='stool-html-print';
+ overlay.style='position:fixed;inset:0;z-index:2147483646;background:#111827;color:#111;overflow:auto;padding:72px 20px 32px;font-family:system-ui,sans-serif';
+ const toolbar=document.createElement('div');
+ toolbar.id='stool-print-toolbar';
+ toolbar.style='position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,.25)';
+ toolbar.innerHTML='<strong>STool HTML PDF</strong><span>'+pageNodes.length+' trang</span><button id="stool-print-save" style="border:0;border-radius:8px;background:#2563eb;color:white;font-weight:700;padding:9px 14px;cursor:pointer">Save as PDF</button><button id="stool-print-close" style="border:1px solid rgba(255,255,255,.35);border-radius:8px;background:transparent;color:white;font-weight:700;padding:8px 12px;cursor:pointer">Close</button>';
+ const content=document.createElement('div');
+ content.id='stool-print-content';
+ content.style='display:flex;flex-direction:column;align-items:center;gap:18px';
+ for(const p of pageNodes){
+  const clone=p.cloneNode(true);
+  clone.classList.add('stool-print-page');
+  clone.style.margin='0 auto';
+  clone.style.position='relative';
+  clone.style.transform='none';
+  clone.style.boxShadow='0 10px 32px rgba(0,0,0,.28)';
+  clone.querySelectorAll('script,iframe,video').forEach(n=>n.remove());
+  content.appendChild(clone);
+ }
+ const style=document.createElement('style');
+ style.textContent='@media print{body>*:not(#stool-html-print){display:none!important}#stool-html-print{position:static!important;inset:auto!important;overflow:visible!important;background:white!important;padding:0!important;color:#111!important}#stool-print-toolbar{display:none!important}#stool-print-content{display:block!important}.stool-print-page{break-after:page;page-break-after:always;box-shadow:none!important;margin:0 auto!important}@page{margin:0}}';
+ overlay.appendChild(style);
+ overlay.appendChild(toolbar);
+ overlay.appendChild(content);
+ document.body.appendChild(overlay);
+ toolbar.querySelector('#stool-print-save').onclick=()=>window.print();
+ toolbar.querySelector('#stool-print-close').onclick=()=>overlay.remove();
+ t.innerHTML='<b>STool v2</b><br>Da tao ban in HTML '+pageNodes.length+' trang. Chon Save as PDF.';
+ if(iw&&!iw.closed)iw.postMessage({type:'STOOL_PRINT_MODE',pages:pageNodes.length,reason:reason||''},S);
+ setTimeout(()=>window.print(),600);
+ return true;
+}
+t.innerHTML='<b>STool v2</b><br>Dang thu fast mode...';
+const fastMsg=collectFastPayload();
+const sendFast=()=>{if(iw&&!iw.closed)iw.postMessage(fastMsg,S);};
+sendFast();setTimeout(sendFast,600);
+for(let n=0;n<35&&!fastAccepted&&!fastRejected;n++){await wait(200);}
+if(fastAccepted){
+ t.innerHTML='<b>STool v2</b><br>Fast mode da nhan job, dang tai song song tren server...';
+ setTimeout(()=>t.remove(),3000);
+ return;
+}
+const useRenderFallback=false;
+if(!useRenderFallback){
+ if(await tryHtmlPrintMode(fastRejected))return;
+ const msg=fastRejected||'Fast proxy khong du nguon sach. Tai lieu nay can PDF/source goc hoac goi trang day du, khong render tung anh.';
+ t.innerHTML='<b>STool v2</b><br>'+msg;
+ if(iw&&!iw.closed)iw.postMessage({type:'STOOL_RENDER_FATAL',error:msg},S);
+ return;
+}
+t.innerHTML='<b>STool v2</b><br>Fast mode khong du du lieu, chuyen sang render fallback...';
+if(iw&&!iw.closed)iw.postMessage({type:'STOOL_RENDER_FALLBACK_START',message:'Fast mode khong du du lieu. Dang khoi dong render fallback...'},S);
+await wait(900);
 async function loadScript(src){
  const s=document.createElement('script');
  s.src=src;
@@ -83,12 +206,10 @@ if(!window.html2canvas){
  ];
  let loaded=false;
  for(const src of cdns){try{await loadScript(src);loaded=!!window.html2canvas;if(loaded)break;}catch(e){}}
- if(!loaded)throw new Error('Khong tai duoc html2canvas. Hay tat Brave Shields/Adblock cho trang nay roi bam bookmark lai.');
+ if(!loaded){
+  if(iw&&!iw.closed)iw.postMessage({type:'STOOL_RENDER_FALLBACK_START',message:'Khong tai duoc html2canvas, dang dung renderer noi bo...'},S);
+ }
 }
-let pageCount=0;
-const text=document.body.innerText||'';
-const nums=[...text.matchAll(/(\d{1,4})\s*(?:pages?|trang)/gi)].map(m=>Number(m[1])).filter(n=>n>0&&n<=1000);
-if(nums.length)pageCount=Math.max(...nums);
 function hideNoise(root=document){
  root.querySelectorAll('[role="dialog"],[aria-modal="true"]').forEach(e=>e.style.display='none');
  Array.from(root.body?root.body.querySelectorAll('*'):root.querySelectorAll('*')).forEach(e=>{
@@ -105,57 +226,126 @@ Array.from(document.body.querySelectorAll('*')).forEach(e=>{
  const tx=(e.innerText||'').slice(0,120);
  if((cs.position==='fixed'||cs.position==='sticky')&&(z>10||/This is a preview|unlock all|Premium|Free Trial/i.test(tx)))e.style.visibility='hidden';
 });
-const h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-for(let y=0;y<h;y+=900){t.innerHTML='<b>STool v2</b><br>Dang nap noi dung trang... '+Math.min(100,Math.round((y/h)*100))+'%';window.scrollTo(0,y);await wait(180);}
+function roughPageCount(){
+ const sel='[data-test-selector*="page"],[data-testid*="page"],[data-page-number],[data-page],[id*="page"],[class*="page"],[class*="Page"],[class*="document"],[class*="Document"],article,main section';
+ return Array.from(document.querySelectorAll(sel)).filter(e=>{
+  const r=e.getBoundingClientRect();
+  const cs=getComputedStyle(e);
+  return r.width>=300&&r.height>=300&&cs.display!=='none'&&cs.visibility!=='hidden';
+ }).length;
+}
+let h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+let lastH=0,lastRough=0,stablePasses=0;
+for(let pass=0;pass<7;pass++){
+ h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+ for(let y=0;y<h;y+=1200){
+  t.innerHTML='<b>STool v2</b><br>Dang nap noi dung trang... '+Math.min(100,Math.round((y/h)*100))+'%';
+  window.scrollTo(0,y);
+  await wait(95);
+ }
+ window.scrollTo(0,Math.max(0,h-innerHeight));await wait(220);
+ const nowH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+ const nowRough=roughPageCount();
+ if(pageCount&&nowRough>=pageCount)break;
+ if(Math.abs(nowH-lastH)<80&&nowRough<=lastRough)stablePasses++;else stablePasses=0;
+ lastH=nowH;lastRough=nowRough;
+ if(stablePasses>=2)break;
+}
+h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
 window.scrollTo(0,0);await wait(500);
-const raw=Array.from(document.querySelectorAll('[data-test-selector*="page"],[data-page-number],[data-page],[id^="page"],[class*="page"],[class*="Page"],article section,main section,main div')).filter(e=>{
- const idc=((e.id||'')+' '+(e.className||'')+' '+Array.from(e.attributes||[]).map(a=>a.name+'='+a.value).join(' ')).toString();
- return /page|document|preview|paper|reader/i.test(idc)||e.querySelector('img,canvas,svg');
-});
-let pages=raw.filter(e=>{
+function elTop(e){return e.getBoundingClientRect().top+scrollY;}
+function visibleCandidate(e){
  if(e===document.body||e===document.documentElement)return false;
  const r=e.getBoundingClientRect();
- if(r.width<420||r.height<520||r.width>1800||r.height>2400)return false;
+ if(r.width<260||r.height<260||r.width>1900||r.height>2600)return false;
  const cs=getComputedStyle(e);
  if(cs.display==='none'||cs.visibility==='hidden'||cs.opacity==='0')return false;
  if(e.closest('header,footer,nav,aside,[role="navigation"]'))return false;
- if(!e.querySelector('img,canvas,svg')&&(e.innerText||'').trim().length<20)return false;
+ const tx=(e.innerText||'').trim();
+ if(!e.querySelector('img,canvas,svg,p,span')&&tx.length<10)return false;
  return true;
-}).sort((a,b)=>{
- const at=a.getBoundingClientRect().top+scrollY,bt=b.getBoundingClientRect().top+scrollY;
+}
+function scoreCandidate(e){
+ const r=e.getBoundingClientRect();
+ const cs=getComputedStyle(e);
+ const idc=((e.id||'')+' '+(e.className||'')+' '+Array.from(e.attributes||[]).map(a=>a.name+'='+a.value).join(' ')).toString();
+ let s=0;
+ if(/page|document|preview|paper|reader|sheet|canvas/i.test(idc))s+=6;
+ if(e.querySelector('img,canvas,svg'))s+=4;
+ if((e.innerText||'').trim().length>30)s+=2;
+ if(/rgb\(255,\s*255,\s*255\)|#fff|white/i.test(cs.backgroundColor))s+=2;
+ if(r.width>=420&&r.height>=520)s+=4;
+ const ratio=r.width/r.height;
+ if(ratio>.45&&ratio<1.25)s+=3;
+ if(r.left>80&&r.right<innerWidth-20)s+=1;
+ return s;
+}
+const selectorCandidates=Array.from(document.querySelectorAll('[data-test-selector*="page"],[data-testid*="page"],[data-page-number],[data-page],[id*="page"],[class*="page"],[class*="Page"],[class*="document"],[class*="Document"],[class*="preview"],article,article section,main section,main div'));
+const mediaCandidates=Array.from(document.querySelectorAll('img,canvas,svg')).map(e=>e.closest('section,article,div')||e);
+const geometryCandidates=Array.from(document.querySelectorAll('main *')).filter(e=>{
+ const r=e.getBoundingClientRect();
+ return r.width>=360&&r.height>=420;
+});
+let raw=[...new Set([...selectorCandidates,...mediaCandidates,...geometryCandidates])];
+let pages=raw.filter(visibleCandidate).map(e=>({kind:'element',el:e,score:scoreCandidate(e),top:elTop(e),area:e.getBoundingClientRect().width*e.getBoundingClientRect().height})).filter(p=>p.score>=5).sort((a,b)=>{
+ const at=a.top,bt=b.top;
  if(Math.abs(at-bt)>20)return at-bt;
- return (a.getBoundingClientRect().width*a.getBoundingClientRect().height)-(b.getBoundingClientRect().width*b.getBoundingClientRect().height);
+ if(b.score!==a.score)return b.score-a.score;
+ return a.area-b.area;
 });
 const picked=[];
-for(const e of pages){
+for(const item of pages){
+ const e=item.el;
  const r=e.getBoundingClientRect();
  const area=r.width*r.height;
  const duplicate=picked.findIndex(p=>{
-  const pr=p.getBoundingClientRect();
+  const pr=p.el.getBoundingClientRect();
   const pa=pr.width*pr.height;
-  const sameTop=Math.abs((pr.top+scrollY)-(r.top+scrollY))<40;
-  return sameTop&&(p.contains(e)||e.contains(p)||Math.min(area,pa)/Math.max(area,pa)>.65);
+  const sameTop=Math.abs((pr.top+scrollY)-(r.top+scrollY))<55;
+  return sameTop&&(p.el.contains(e)||e.contains(p.el)||Math.min(area,pa)/Math.max(area,pa)>.55);
  });
  if(duplicate>=0){
-  const old=picked[duplicate],or=old.getBoundingClientRect();
-  if(area<or.width*or.height)picked[duplicate]=e;
+  const old=picked[duplicate],or=old.el.getBoundingClientRect();
+  if(item.score>old.score||(item.score===old.score&&area<or.width*or.height))picked[duplicate]=item;
   continue;
  }
- picked.push(e);
+ picked.push(item);
 }
 pages=picked;
 if(pageCount&&pages.length>pageCount)pages=pages.slice(0,pageCount);
-if(!pages.length)throw new Error('Khong tim thay container trang de chup');
-if(pageCount&&pages.length<Math.max(1,pageCount-2)){t.innerHTML='<b>STool v2</b><br>Chi tim thay '+pages.length+'/'+pageCount+' trang. Van thu chup cac trang dang co...';await wait(1500);}
-const title=document.querySelector('h1')?.textContent?.trim()||document.title||'studocu_document';
-const startMsg={type:'STOOL_RENDER_START',title,sourceUrl:location.href,pageCount:pageCount||pages.length,total:pages.length};
+let fallbackMode=false;
+function makeViewportPages(count){
+ const result=[];
+ const sliceH=Math.min(1150,Math.max(700,Math.floor(h/Math.max(1,count))+120));
+ if(count<=1)return [{kind:'viewport',top:0,height:Math.min(sliceH,h)}];
+ const maxTop=Math.max(0,h-sliceH);
+ for(let i=0;i<count;i++){
+  result.push({kind:'viewport',top:Math.round((maxTop*i)/(count-1)),height:sliceH});
+ }
+ return result;
+}
+if(pageCount&&pages.length>0&&pages.length<Math.max(1,pageCount-2)){
+ fallbackMode=true;
+ t.innerHTML='<b>STool v2</b><br>Chi thay '+pages.length+'/'+pageCount+' container. Dang chia lai thanh '+pageCount+' vung chup...';
+ await wait(1200);
+ pages=makeViewportPages(pageCount);
+}
+if(!pages.length){
+ fallbackMode=true;
+ pages=makeViewportPages(pageCount||Math.min(80,Math.max(1,Math.ceil(h/900))));
+ if(!pages.length)throw new Error('Khong tim thay noi dung de chup');
+}
+if(pageCount&&!fallbackMode&&pages.length<Math.max(1,pageCount-2)){t.innerHTML='<b>STool v2</b><br>Chi tim thay '+pages.length+'/'+pageCount+' trang. Van thu chup cac trang dang co...';await wait(1500);}
+if(fallbackMode){t.innerHTML='<b>STool v2</b><br>Khong thay container rieng. Dang chuyen sang chup theo vung man hinh ('+pages.length+' vung)...';await wait(1500);}
+const expectedPages=pageCount||pages.length;
+const startMsg={type:'STOOL_RENDER_START',title,sourceUrl:location.href,pageCount:expectedPages,total:pages.length};
 const sendStart=()=>{if(iw&&!iw.closed)iw.postMessage(startMsg,S);};
 sendStart();setTimeout(sendStart,500);setTimeout(sendStart,1200);
 for(let n=0;n<30&&!renderReady;n++){await wait(200);}
 if(!renderReady)throw new Error('Import page chua san sang nhan du lieu');
 async function waitImages(el){
  const imgs=Array.from(el.querySelectorAll('img')).filter(img=>img.offsetWidth>10&&img.offsetHeight>10);
- await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?null:new Promise(r=>{img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});setTimeout(r,3500);})));
+ await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?null:new Promise(r=>{img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});setTimeout(r,1200);})));
 }
 function shrinkCanvas(src,maxWidth){
  if(src.width<=maxWidth)return src;
@@ -165,6 +355,30 @@ function shrinkCanvas(src,maxWidth){
  c.getContext('2d').drawImage(src,0,0,c.width,c.height);
  return c;
 }
+async function captureWithForeignObject(el,target,scale){
+ const w=Math.max(1,Math.round((target.kind==='viewport'?document.documentElement.clientWidth:el.getBoundingClientRect().width)*scale));
+ const hgt=Math.max(1,Math.round((target.kind==='viewport'?target.height:el.getBoundingClientRect().height)*scale));
+ const clone=(el||document.body).cloneNode(true);
+ clone.querySelectorAll('script,style,link,iframe,video').forEach(n=>n.remove());
+ clone.style.margin='0';
+ clone.style.transform='scale('+scale+')';
+ clone.style.transformOrigin='top left';
+ clone.style.background='#fff';
+ clone.style.width=(w/scale)+'px';
+ clone.style.minHeight=(hgt/scale)+'px';
+ const xml=new XMLSerializer().serializeToString(clone);
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+hgt+'"><foreignObject width="100%" height="100%" x="0" y="0"><div xmlns="http://www.w3.org/1999/xhtml">'+xml+'</div></foreignObject></svg>';
+ const img=new Image();
+ const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
+ await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;setTimeout(()=>reject(new Error('foreignObject timeout')),12000);});
+ const c=document.createElement('canvas');
+ c.width=w;c.height=hgt;
+ c.getContext('2d').fillStyle='#fff';
+ c.getContext('2d').fillRect(0,0,w,hgt);
+ c.getContext('2d').drawImage(img,0,0);
+ URL.revokeObjectURL(url);
+ return c;
+}
 function postPage(payload){
  return new Promise((resolve,reject)=>{
   pendingPages.set(payload.index,{resolve,reject});
@@ -172,38 +386,53 @@ function postPage(payload){
   setTimeout(()=>{if(pendingPages.has(payload.index)){pendingPages.delete(payload.index);reject(new Error('Qua thoi gian gui trang '+(payload.index+1)));}},45000);
  });
 }
+const uploads=[];
 for(let i=0;i<pages.length;i++){
  t.innerHTML='<b>STool v2</b><br>Dang chup trang '+(i+1)+'/'+pages.length+'...';
- pages[i].scrollIntoView({block:'center'});
- await wait(420);
- await waitImages(pages[i]);
- const rect=pages[i].getBoundingClientRect();
- const scale=Math.min(1.45,Math.max(1.08,1450/Math.max(1,rect.width)));
- const canvas=await html2canvas(pages[i],{
-  backgroundColor:'#ffffff',
-  scale,
-  useCORS:true,
-  allowTaint:false,
-  logging:false,
-  removeContainer:true,
-  scrollX:0,
-  scrollY:-window.scrollY,
-  windowWidth:document.documentElement.clientWidth,
-  windowHeight:document.documentElement.clientHeight,
-  onclone:doc=>hideNoise(doc)
- });
- const out=shrinkCanvas(canvas,1650);
- const image=out.toDataURL('image/jpeg',0.84);
- await postPage({type:'STOOL_RENDER_PAGE',jobId:renderJobId,index:i,total:pages.length,image});
+ const target=pages[i];
+ const el=target.el;
+ if(target.kind==='viewport')window.scrollTo(0,target.top);
+ else el.scrollIntoView({block:'center'});
+ await wait(160);
+ if(el)await waitImages(el);
+ const rect=el?el.getBoundingClientRect():{width:document.documentElement.clientWidth,height:target.height};
+ const scale=Math.min(1.22,Math.max(1,1220/Math.max(1,rect.width)));
+ let canvas;
+ if(window.html2canvas){
+  canvas=await html2canvas(el||document.body,{
+   backgroundColor:'#ffffff',
+   scale,
+   useCORS:true,
+   allowTaint:false,
+   logging:false,
+   removeContainer:true,
+   x:target.kind==='viewport'?0:undefined,
+   y:target.kind==='viewport'?target.top:undefined,
+   width:target.kind==='viewport'?document.documentElement.clientWidth:undefined,
+   height:target.kind==='viewport'?target.height:undefined,
+   scrollX:0,
+   scrollY:target.kind==='viewport'?0:-window.scrollY,
+   windowWidth:document.documentElement.clientWidth,
+   windowHeight:target.kind==='viewport'?target.height:document.documentElement.clientHeight,
+   onclone:doc=>hideNoise(doc)
+  });
+ }else{
+  canvas=await captureWithForeignObject(el||document.body,target,scale);
+ }
+ const out=shrinkCanvas(canvas,1350);
+ const image=out.toDataURL('image/jpeg',0.76);
+ uploads.push(postPage({type:'STOOL_RENDER_PAGE',jobId:renderJobId,index:i,total:pages.length,image}));
+ if(uploads.length>=3)await uploads.shift();
  t.innerHTML='<b>STool v2</b><br>Da gui '+(i+1)+'/'+pages.length+' trang...';
- await wait(80);
+ await wait(25);
 }
+await Promise.all(uploads);
 t.innerHTML='<b>STool v2</b><br>Da gui '+pages.length+' trang, dang tao PDF...';
 iw.postMessage({type:'STOOL_RENDER_FINISH',jobId:renderJobId,total:pages.length},S);
 await wait(1000);
 if(finishError)throw finishError;
 setTimeout(()=>t.remove(),3500);
-}catch(e){alert('STool v2 loi: '+(e&&e.message?e.message:e));}})();`;
+}catch(e){try{if(iw&&!iw.closed)iw.postMessage({type:'STOOL_RENDER_FATAL',error:(e&&e.message?e.message:String(e))},S);}catch(_){}alert('STool v2 loi: '+(e&&e.message?e.message:e));}})();`;
 
 
 /* ─── DOM Elements ──────────────────────────────────────────────────────────── */
@@ -226,9 +455,9 @@ const errorSection    = document.getElementById('error-section');
 const errorMessage    = document.getElementById('error-message');
 const resetBtn        = document.getElementById('reset-btn');
 const resetBtnErr     = document.getElementById('reset-btn-err');
-const bookmarkletFallback = document.getElementById('bookmarklet-fallback');
-const bookmarkletLink = document.getElementById('bookmarklet-link');
-const openStudocuLink = document.getElementById('open-studocu-link');
+const bookmarkletFallback = null;
+const bookmarkletLink = null;
+const openStudocuLink = null;
 
 /* ─── State ─────────────────────────────────────────────────────────────────── */
 let currentSSE = null;
@@ -236,12 +465,7 @@ let currentStudocuUrl = '';
 
 /* ─── Set Bookmarklet href ──────────────────────────────────────────────────── */
 function initBookmarklet() {
-  if (!bookmarkletLink) return;
-  bookmarkletLink.href = 'javascript:' + BOOKMARKLET_CODE.trim();
-  bookmarkletLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    showToast('🔖 Kéo nút "STool Extractor v2" vào thanh bookmark bar, đừng click trực tiếp!');
-  });
+  // Bookmarklet flow removed intentionally. Direct backend mode should fail clearly.
 }
 
 /* ─── Check for ?jobId= in URL (from bookmarklet redirect) ─────────────────── */
@@ -499,5 +723,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 downloadBtn.disabled = true;
-initBookmarklet();
-checkJobIdInUrl();   // Handle redirect from bookmarklet

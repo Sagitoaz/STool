@@ -60,6 +60,37 @@
       if (!e.data || !e.data.type) return;
 
       try {
+        if (e.data.type === 'STOOL_FAST_IMPORT') {
+          received = true;
+          setStatus(`Dang thu fast mode ${e.data.pageCount || '?'} trang...`);
+          setBar(5);
+
+          try {
+            const data = await readJsonResponse(await fetch('/api/fast-extract', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(e.data)
+            }));
+
+            setStatus(`Fast mode da tim ${data.found}/${data.expected || '?'} trang. Dang tai song song...`);
+            setBar(12);
+            connectSSE(data.jobId);
+            e.source && e.source.postMessage({
+              type: 'STOOL_FAST_ACCEPTED',
+              jobId: data.jobId,
+              found: data.found,
+              expected: data.expected
+            }, e.origin);
+          } catch (err) {
+            setStatus(err.message || 'Fast proxy khong du nguon sach. Khong render fallback tu dong.', 'error');
+            e.source && e.source.postMessage({
+              type: 'STOOL_FAST_REJECTED',
+              error: err.message
+            }, e.origin);
+          }
+          return;
+        }
+
         if (e.data.type === 'STOOL_RENDER_START') {
           received = true;
           setStatus(`Dang tao job render ${e.data.total || '?'} trang...`);
@@ -79,6 +110,28 @@
           renderJobId = data.jobId;
           connectSSE(renderJobId);
           e.source && e.source.postMessage({ type: 'STOOL_RENDER_READY', jobId: renderJobId }, e.origin);
+          return;
+        }
+
+        if (e.data.type === 'STOOL_RENDER_FALLBACK_START') {
+          received = true;
+          setStatus(e.data.message || 'Dang khoi dong render fallback tren tab Studocu...');
+          setBar(8);
+          return;
+        }
+
+        if (e.data.type === 'STOOL_RENDER_FATAL') {
+          received = true;
+          setStatus('Render fallback loi: ' + (e.data.error || 'khong ro'), 'error');
+          spinnerEl.style.display = 'none';
+          return;
+        }
+
+        if (e.data.type === 'STOOL_PRINT_MODE') {
+          received = true;
+          setStatus(`Da tao ban in HTML ${e.data.pages || '?'} trang tren tab Studocu. Hay chon Save as PDF trong hop thoai Print.`, 'success');
+          setBar(100);
+          spinnerEl.style.display = 'none';
           return;
         }
 
