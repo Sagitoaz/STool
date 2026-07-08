@@ -1292,20 +1292,23 @@ async function waitForCloudflare(page, jobId) {
 
   if (!(await isCF())) return; // No CF challenge
 
-  sendProgress(jobId, { status: 'cloudflare', message: '🛡️ Đang vượt qua bảo mật Cloudflare (có thể mất 10-30s)...', percent: 30 });
+  sendProgress(jobId, { status: 'cloudflare', message: 'Dang cho Cloudflare tu xac minh trinh duyet server...', percent: 30 });
   console.log(`[Job ${jobId}] Cloudflare detected, waiting...`);
 
   const start = Date.now();
-  const maxWait = 40_000;
+  const maxWait = 90_000;
   while (Date.now() - start < maxWait) {
-    await sleep(1500);
+    await sleep(2000);
     if (!(await isCF())) {
       console.log(`[Job ${jobId}] Cloudflare resolved in ${Date.now() - start}ms`);
       await sleep(800);
       return;
     }
   }
-  throw new Error('Cloudflare không tự động resolve. Hãy thử lại, hoặc mở studocu.com trong trình duyệt thường trước.');
+  const title = await page.title().catch(() => '');
+  const currentUrl = page.url();
+  appendLog('browser-debug.log', `cloudflare-timeout url=${currentUrl} title=${title}`);
+  throw new Error('Cloudflare chan trinh duyet tu dong tren Render nen khong vao duoc Studocu. Thu redeploy/doi region Render hoac test lai sau; mo Studocu tren may ca nhan khong chia se cookie voi Render.');
 }
 
 // ─── Dismiss Popups ────────────────────────────────────────────────────────────

@@ -259,6 +259,14 @@ HTTP 429
 
 Studocu/Cloudflare dang chan request tu server. Thu redeploy, doi region/plan, hoac test lai sau.
 
+Neu thay:
+
+```text
+Cloudflare chan trinh duyet tu dong tren Render
+```
+
+Nghia la Chromium trong container da chay duoc, nhung Cloudflare khong chap nhan browser/server IP cua Render. Viec mo Studocu tren may ca nhan khong giup Render vi cookie khong nam trong container. Thu `Manual Deploy -> Clear build cache & deploy`, doi region/service moi, hoac test lai luc khac.
+
 ```text
 Khong the lay noi dung tai lieu
 ```
