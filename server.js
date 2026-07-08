@@ -318,7 +318,10 @@ async function processDocument(jobId, url) {
 
 function formatDownloadError(err) {
   const message = err && err.message ? err.message : String(err);
-  if (/spawn\s+EPERM|launchPersistentContext|chrome\.exe/i.test(message)) {
+  if (/Executable doesn't exist|Please update docker image|chromium_headless_shell|chrome-headless-shell/i.test(message)) {
+    return 'Playwright va Docker image dang lech phien ban nen khong tim thay Chromium. Hay push Dockerfile moi va deploy lai service Docker tren Render.';
+  }
+  if (process.platform === 'win32' && /spawn\s+EPERM|launchPersistentContext|chrome\.exe/i.test(message)) {
     return 'Windows dang chan trinh duyet tu dong (spawn EPERM). STool da dung tai day de tranh gay nham lan. Hay mo khoa/quarantine Chrome/Edge/Chromium trong antivirus/Windows Security, hoac deploy backend len Linux/VPS de chay Chromium on dinh hon.';
   }
   return message;
@@ -1089,7 +1092,10 @@ async function launchPersistentBrowser(chromium, baseOptions, jobId) {
     }
   }
 
-  throw new Error(`Khong mo duoc Chrome/Edge/Chromium tren Windows. Hay dung bookmarklet tren tab Studocu. Chi tiet: ${errors.slice(0, 2).join(' | ')}`);
+  const hint = process.platform === 'win32'
+    ? 'Khong mo duoc Chrome/Edge/Chromium tren Windows. Hay mo khoa/quarantine Chromium trong antivirus/Windows Security.'
+    : 'Khong mo duoc Chromium tren server Linux/Render. Hay kiem tra Dockerfile, Playwright version va deploy lai service Docker.';
+  throw new Error(`${hint} Chi tiet: ${errors.slice(0, 2).join(' | ')}`);
 }
 
 async function getBrowserLaunchCandidates() {

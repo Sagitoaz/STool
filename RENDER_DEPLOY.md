@@ -57,10 +57,12 @@ services:
 `Dockerfile` dung image:
 
 ```text
-mcr.microsoft.com/playwright:v1.44.1-jammy
+mcr.microsoft.com/playwright:v1.61.1-jammy
 ```
 
-Image nay da co Chromium cho Playwright, nen khong can chay `playwright install --with-deps` tren Render nua.
+Image nay da co Chromium cho dung Playwright `1.61.1`, nen khong can chay `playwright install --with-deps` tren Render nua.
+
+Neu sau nay log Render bao `Please update docker image as well`, hay cap nhat version trong `Dockerfile` cho khop voi version `playwright` trong `package.json` va `package-lock.json`.
 
 ## 3. Kiem tra local truoc khi push
 
